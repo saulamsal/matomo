@@ -192,6 +192,7 @@ class Controller extends \Piwik\Plugin\ControllerAdmin
             $guesser = new GtmSiteTypeGuesser();
             $siteType = $guesser->guessSiteTypeFromResponse($response);
             $gtmUsed = $guesser->guessGtmFromResponse($response);
+            print "<pre>$siteType - $mainUrl - $gtmUsed</pre>";
 
             $this->cache->save($typeCacheId, $siteType, 60 * 60 * 24);
             $this->cache->save($gtmCacheId, $gtmUsed, 60 * 60 * 24);

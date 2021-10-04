@@ -6,7 +6,6 @@
 
 <div class="row">
     <div class="col s12">
-        <pre>{{ siteType }}</pre>
         <ul class="tabs">
             <li class="tab col s3"><a {% if siteType != constant('Piwik\\Plugins\\SitesManager\\SitesManager::SITE_TYPE_UNKNOWN') %} class="active" {% endif %} href="#integrations">{{ 'SitesManager_Integrations'|translate }}</a></li>
             <li class="tab col s3"><a {% if siteType == constant('Piwik\\Plugins\\SitesManager\\SitesManager::SITE_TYPE_UNKNOWN') %} class="active" {% endif %} href="#tracking-code">{{ 'CoreAdminHome_TrackingCode'|translate}}</a></li>
