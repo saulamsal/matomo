@@ -82,7 +82,7 @@ describe("OneClickUpdate", function () {
         await page.waitForNetworkIdle();
 
         const element  = await page.$('.site-without-data');
-        expect(await element.screenshot()).to.matchImage('login');
+        expect(await page.screenshot({fullPage:true})).to.matchImage('login');
     });
 
     it('should have a working cron archiving process', async function () {
