@@ -119,7 +119,7 @@ class Loader
         // invalidate existing archives before we start archiving in case data was tracked in the past. if the archive is
         // made invalid, we will correctly re-archive below.
         if ($this->invalidateBeforeArchiving
-            && Rules::isBrowserTriggerEnabled()
+          && Rules::isBrowserTriggerEnabled()
         ) {
             $this->invalidatedReportsIfNeeded();
         }
@@ -128,8 +128,8 @@ class Loader
         // with a ts_archived >= the DONE_OK/DONE_INVALIDATED date.
         list($idArchives, $visits, $visitsConverted, $isAnyArchiveExists, $tsArchived, $value) = $this->loadExistingArchiveIdFromDb();
         if (!empty($idArchives)
-            && !Rules::isActuallyForceArchivingSinglePlugin()
-            && !$this->shouldForceInvalidatedArchive($value, $tsArchived)
+          && !Rules::isActuallyForceArchivingSinglePlugin()
+          && !$this->shouldForceInvalidatedArchive($value, $tsArchived)
         ) {
             // we have a usable idarchive (it's not invalidated and it's new enough), and we are not archiving
             // a single report
@@ -154,12 +154,29 @@ class Loader
             $this->logger->info("initiating archiving via core:archive for " . $this->params);
         }
 
-        list($visits, $visitsConverted) = $this->prepareCoreMetricsArchive($visits, $visitsConverted);
-        list($idArchive, $visits) = $this->prepareAllPluginsArchive($visits, $visitsConverted);
+        //add lock for concurrent request
+        $archivingStatus = StaticContainer::get(ArchivingStatus::class);
+        $lock = $archivingStatus->archiveStarted($this->params);
 
-        if ($this->isThereSomeVisits($visits) || PluginsArchiver::doesAnyPluginArchiveWithoutVisits()) {
-            return [[$idArchive], $visits];
-        }
+        $i = 0;
+        while ($lock->isLocked()) {
+            usleep(100); // 100ms
+            if ($i > 50) { // give up after 5seconds (50 * 100ms)
+                throw new \Exception('Could not get the lock for ID: ' . $archivingStatus->getLockId());
+            }
+            try {
+                list($visits, $visitsConverted) = $this->prepareCoreMetricsArchive($visits, $visitsConverted);
+                list($idArchive, $visits) = $this->prepareAllPluginsArchive($visits, $visitsConverted);
+                if ($this->isThereSomeVisits($visits) || PluginsArchiver::doesAnyPluginArchiveWithoutVisits()) {
+                    return [[$idArchive], $visits];
+                }
+            } finally {
+                $lock->unlock();
+            }
+            $i++;
+        };
+
+
 
         return [false, false];
     }
@@ -173,7 +190,7 @@ class Loader
     protected function prepareCoreMetricsArchive($visits, $visitsConverted)
     {
         $createSeparateArchiveForCoreMetrics = $this->mustProcessVisitCount($visits)
-                                && !$this->doesRequestedPluginIncludeVisitsSummary();
+          && !$this->doesRequestedPluginIncludeVisitsSummary();
 
         if ($createSeparateArchiveForCoreMetrics) {
             $requestedPlugin = $this->params->getRequestedPlugin();
@@ -207,7 +224,7 @@ class Loader
         $pluginsArchiver = new PluginsArchiver($this->params);
 
         if ($this->mustProcessVisitCount($visits)
-            || $this->doesRequestedPluginIncludeVisitsSummary()
+          || $this->doesRequestedPluginIncludeVisitsSummary()
         ) {
             $metrics = $pluginsArchiver->callAggregateCoreMetrics();
             $visits = $metrics['nb_visits'];
@@ -225,9 +242,10 @@ class Loader
     protected function doesRequestedPluginIncludeVisitsSummary()
     {
         $processAllReportsIncludingVisitsSummary =
-                Rules::shouldProcessReportsAllPlugins(array($this->params->getSite()->getId()), $this->params->getSegment(), $this->params->getPeriod()->getLabel());
+          Rules::shouldProcessReportsAllPlugins(array($this->params->getSite()->getId()), $this->params->getSegment(),
+            $this->params->getPeriod()->getLabel());
         $doesRequestedPluginIncludeVisitsSummary = $processAllReportsIncludingVisitsSummary
-                                                        || $this->params->getRequestedPlugin() == 'VisitsSummary';
+          || $this->params->getRequestedPlugin() == 'VisitsSummary';
         return $doesRequestedPluginIncludeVisitsSummary;
     }
 
@@ -242,7 +260,7 @@ class Loader
             $debugSetting = 'always_archive_data_range';
         }
 
-        return (bool) Config::getInstance()->Debug[$debugSetting];
+        return (bool)Config::getInstance()->Debug[$debugSetting];
     }
 
     /**
@@ -277,7 +295,8 @@ class Loader
     {
         // for range periods we can archive in a browser request request, make sure to check for the ttl no matter what
         $isRangeArchiveAndArchivingEnabled = $this->params->getPeriod()->getLabel() == 'range'
-            && Rules::isArchivingEnabledFor([$this->params->getSite()->getId()], $this->params->getSegment(), $this->params->getPeriod()->getLabel());
+          && Rules::isArchivingEnabledFor([$this->params->getSite()->getId()], $this->params->getSegment(),
+            $this->params->getPeriod()->getLabel());
 
         if (!$isRangeArchiveAndArchivingEnabled) {
             $endDateTimestamp = self::determineIfArchivePermanent($this->params->getDateEnd());
@@ -288,9 +307,9 @@ class Loader
         }
 
         $dateStart = $this->params->getDateStart();
-        $period    = $this->params->getPeriod();
-        $segment   = $this->params->getSegment();
-        $site      = $this->params->getSite();
+        $period = $this->params->getPeriod();
+        $segment = $this->params->getSegment();
+        $site = $this->params->getSite();
         // in-progress archive
         return Rules::getMinTimeProcessedForInProgressArchive($dateStart, $period, $segment, $site);
     }
@@ -339,14 +358,14 @@ class Loader
 
         foreach ($sitesPerDays as $dateStr => $siteIds) {
             if (empty($siteIds)
-                || !in_array($this->params->getSite()->getId(), $siteIds)
+              || !in_array($this->params->getSite()->getId(), $siteIds)
             ) {
                 unset($sitesPerDays[$dateStr]);
             }
 
             $date = Date::factory($dateStr);
             if ($date->isEarlier($this->params->getPeriod()->getDateStart())
-                || $date->isLater($this->params->getPeriod()->getDateEnd())
+              || $date->isLater($this->params->getPeriod()->getDateEnd())
             ) { // date in list is not the current date, so ignore it
                 unset($sitesPerDays[$dateStr]);
             }
@@ -364,7 +383,8 @@ class Loader
 
         foreach ($sitesPerDays as $date => $siteIds) {
             try {
-                $this->invalidator->markArchivesAsInvalidated([$this->params->getSite()->getId()], array(Date::factory($date)), false, $this->params->getSegment());
+                $this->invalidator->markArchivesAsInvalidated([$this->params->getSite()->getId()],
+                  array(Date::factory($date)), false, $this->params->getSegment());
             } catch (\Exception $e) {
                 Site::clearCache();
                 throw $e;
@@ -389,9 +409,9 @@ class Loader
         }
 
         return $isWebsiteUsingTracker
-            && !$isArchivingForcedWhenNoVisits
-            && !$hasSiteVisitsBetweenTimeframe
-            && !$hasChildArchivesInPeriod;
+          && !$isArchivingForcedWhenNoVisits
+          && !$hasSiteVisitsBetweenTimeframe
+          && !$hasChildArchivesInPeriod;
     }
 
     public function canSkipArchiveForSegment()
@@ -404,7 +424,8 @@ class Loader
 
         /** @var SegmentArchiving */
         $segmentArchiving = StaticContainer::get(SegmentArchiving::class);
-        $segmentInfo = $segmentArchiving->findSegmentForHash($params->getSegment()->getHash(), $params->getSite()->getId());
+        $segmentInfo = $segmentArchiving->findSegmentForHash($params->getSegment()->getHash(),
+          $params->getSite()->getId());
 
         if (!$segmentInfo) {
             return false;
@@ -412,19 +433,20 @@ class Loader
 
         $segmentArchiveStartDate = $segmentArchiving->getReArchiveSegmentStartDate($segmentInfo);
 
-        if ($segmentArchiveStartDate !==null && $segmentArchiveStartDate->isLater($params->getPeriod()->getDateEnd()->getEndOfDay())) {
+        if ($segmentArchiveStartDate !== null && $segmentArchiveStartDate->isLater($params->getPeriod()->getDateEnd()->getEndOfDay())) {
             $doneFlag = Rules::getDoneStringFlagFor(
-                [$params->getSite()->getId()],
-                $params->getSegment(),
-                $params->getPeriod()->getLabel(),
-                $params->getRequestedPlugin()
+              [$params->getSite()->getId()],
+              $params->getSegment(),
+              $params->getPeriod()->getLabel(),
+              $params->getRequestedPlugin()
             );
 
             // if there is no invalidation where the report is null, we can skip
             // if we have invalidations for the period and name, but only for a specific reports, we can skip
             // if the report is not null we only want to rearchive if we have invalidation for that report
             // if we don't find invalidation for that report, we can skip
-            return !$this->dataAccessModel->hasInvalidationForPeriodAndName($params->getSite()->getId(), $params->getPeriod(), $doneFlag, $params->getArchiveOnlyReport());
+            return !$this->dataAccessModel->hasInvalidationForPeriodAndName($params->getSite()->getId(),
+              $params->getPeriod(), $doneFlag, $params->getArchiveOnlyReport());
         }
 
         return false;
@@ -486,7 +508,8 @@ class Loader
 
         // the archive is invalidated and we are in a browser request that is allowed archive it
         if ($value == ArchiveWriter::DONE_INVALIDATED
-            && Rules::isArchivingEnabledFor([$params->getSite()->getId()], $params->getSegment(), $params->getPeriod()->getLabel())
+          && Rules::isArchivingEnabledFor([$params->getSite()->getId()], $params->getSegment(),
+            $params->getPeriod()->getLabel())
         ) {
             // if coming from core:archive, force rearchiving, since if we don't the entry will be removed from archive_invalidations
             // w/o being rearchived
@@ -502,10 +525,10 @@ class Loader
 
             // if coming from a browser request, and period does contain today, check the ttl for the period (done just below this)
             $minDatetimeArchiveProcessedUTC = Rules::getMinTimeProcessedForInProgressArchive(
-                $params->getDateStart(), $params->getPeriod(), $params->getSegment(), $params->getSite());
+              $params->getDateStart(), $params->getPeriod(), $params->getSegment(), $params->getSite());
             $minDatetimeArchiveProcessedUTC = Date::factory($minDatetimeArchiveProcessedUTC);
             if ($minDatetimeArchiveProcessedUTC
-                && Date::factory($tsArchived)->isEarlier($minDatetimeArchiveProcessedUTC)
+              && Date::factory($tsArchived)->isEarlier($minDatetimeArchiveProcessedUTC)
             ) {
                 return false;
             }
